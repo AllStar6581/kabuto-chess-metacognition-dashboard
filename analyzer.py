@@ -43,7 +43,7 @@ class PositionAnalyzer:
                 }
             )
             # Проверяем работоспособность
-            self.sf.get_parameters()
+            self.sf.get_engine_parameters()
             logger.info(f"Stockfish initialized: {self.path}")
         except Exception as e:
             logger.error(f"Failed to initialize Stockfish: {e}")
