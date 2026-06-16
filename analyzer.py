@@ -34,29 +34,25 @@ class PositionAnalyzer:
         self._enable_tablebases()
     
     def _find_stockfish(self) -> str:
-        """Ищет Stockfish в системе"""
+        """Ищет Stockfish в Streamlit Cloud и локально"""
         possible_paths = [
-            "stockfish",  # В PATH
+            "/usr/games/stockfish",       # Streamlit Cloud (apt install)
             "/usr/bin/stockfish",
             "/usr/local/bin/stockfish",
-            "C:/Program Files/Stockfish/stockfish.exe",
+            "stockfish",                  # В PATH
+            "./stockfish",                # В папке проекта
             os.path.expanduser("~/stockfish/stockfish"),
         ]
         
         for path in possible_paths:
             try:
                 sf = Stockfish(path=path)
-                sf.get_parameters()  # Проверяем работоспособность
+                sf.get_parameters()
                 return path
             except:
                 continue
         
-        raise FileNotFoundError(
-            "Stockfish не найден. Установите его и укажите путь явно.\n"
-            "Linux: sudo apt install stockfish\n"
-            "Mac: brew install stockfish\n"
-            "Windows: скачайте с https://stockfishchess.org/download/"
-        )
+        raise FileNotFoundError("Stockfish не найден")
     
     def _enable_tablebases(self):
         """Включает tablebases для точного эндшпиля (если есть)"""
