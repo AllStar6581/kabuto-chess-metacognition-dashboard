@@ -589,17 +589,19 @@ def calc_endgame(games: List[Dict]) -> float:
 
 def calc_time_management(games: List[Dict]) -> float:
     """Спортивный навык 6: Контроль времени"""
-    # Прокси: количество зевков в конце партии (усталость)
     late_errors = []
     early_errors = []
     
     for game in games:
         analysis = game.get("analysis", [])
         user_color = game["user_color"]
-        total_user_moves = sum(1 for a in analysis if a["side"] == user_color)
+        
+        # Безопасный доступ через .get()
+        total_user_moves = sum(1 for a in analysis if a.get("side") == user_color)
         
         for i in range(1, len(analysis) - 1):
-            if analysis[i]["side"] != user_color:
+            # Безопасный доступ
+            if analysis[i].get("side") != user_color:
                 continue
             
             quality = get_move_quality(analysis, i, user_color)

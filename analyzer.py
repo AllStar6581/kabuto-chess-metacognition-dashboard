@@ -183,10 +183,22 @@ class PositionAnalyzer:
                 progress_callback(i / len(moves))
         
         # Финальная позиция
+        # final_analysis = self.analyze_position(game["final_fen"])
+        # analysis.append({
+        #     **final_analysis,
+        #     "move_index": len(moves),
+        #     "is_final": True,
+        # })
+        # Финальная позиция
         final_analysis = self.analyze_position(game["final_fen"])
+        # Определяем сторону: если последний ход был белых, то финальная позиция - ход черных
+        last_side = moves[-1]["side"] if moves else "white"
+        final_side = "black" if last_side == "white" else "white"
+
         analysis.append({
             **final_analysis,
             "move_index": len(moves),
+            "side": final_side,
             "is_final": True,
         })
         
