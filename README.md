@@ -1,19 +1,20 @@
-# :earth_americas: GDP dashboard template
+# ♟️ Система личного развития через шахматы
 
-A simple Streamlit app showing the GDP of different countries in the world.
+Streamlit-приложение для анализа шахматных партий с Lichess и Chess.com с фокусом на развитие мета-навыков.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gdp-dashboard-template.streamlit.app/)
+## 🎯 Возможности
 
-### How to run it on your own machine
+- **Загрузка партий** с Lichess и Chess.com через API
+- **Анализ через Stockfish** каждой позиции
+- **18 метрик**: 9 мета-навыков + 9 спортивных
+- **Радарные диаграммы** для визуализации
+- **Отслеживание динамики** с статистической значимостью
+- **Локальное хранение** всех данных в SQLite
 
-1. Install the requirements
+## 🚀 Установка
 
-   ```
-   $ pip install -r requirements.txt
-   ```
+### 1. Клонируйте/создайте проект
 
-2. Run the app
-
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+```bash
+mkdir chess_development_system
+cd chess_development_system
