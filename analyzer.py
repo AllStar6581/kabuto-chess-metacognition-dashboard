@@ -1,146 +1,172 @@
 """
 Анализ партий через Stockfish
+Оптимизировано для Streamlit Community Cloud
 """
 import chess
 from stockfish import Stockfish
 from typing import List, Dict, Optional
 import os
+import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PositionAnalyzer:
     """Анализатор позиций через Stockfish"""
     
-    def __init__(self, stockfish_path: Optional[str] = None, 
-                 threads: int = 4, hash_size: int = 1024, depth: int = 18):
+    # Путь к Stockfish на Streamlit Cloud (из packages.txt)
+    CLOUD_PATH = "/usr/games/stockfish"
+    
+    def __init__(self, stockfish_path: Optional[str] = None,
+                 threads: int = 2, hash_size: int = 256, depth: int = 16):
         """
-        stockfish_path: путь к бинарнику Stockfish. Если None - ищет в системе
-        threads: количество потоков
-        hash_size: размер хеш-таблицы в МБ
-        depth: глубина анализа (18 - оптимально для скорости/качества)
+        stockfish_path: путь к бинарнику. Если None - используется CLOUD_PATH
+        threads: 2 (не больше, чтобы не перегружать Streamlit Cloud)
+        hash_size: 256 МБ (экономим RAM)
+        depth: 16 (оптимально для скорости/качества)
         """
-        if stockfish_path is None:
-            # Пробуем найти Stockfish в системе
-            stockfish_path = self._find_stockfish()
-        
-        self.sf = Stockfish(
-            path=stockfish_path,
-            parameters={
-                "Threads": threads,
-                "Hash": hash_size,
-                "MultiPV": 3,  # Топ-3 хода для анализа неоднозначности
-            }
-        )
+        self.path = stockfish_path or self._find_stockfish()
         self.depth = depth
-        self._enable_tablebases()
+        
+        # Проверяем, что бинарник запускается
+        self._verify_binary()
+        
+        # Создаем Stockfish
+        try:
+            self.sf = Stockfish(
+                path=self.path,
+                parameters={
+                    "Threads": threads,
+                    "Hash": hash_size,
+                    "MultiPV": 1,  # Только лучший ход (экономим ресурсы)
+                }
+            )
+            # Проверяем работоспособность
+            self.sf.get_parameters()
+            logger.info(f"Stockfish initialized: {self.path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Stockfish: {e}")
+            raise RuntimeError(
+                f"Stockfish не запустился по пути {self.path}.\n"
+                f"Проверьте, что packages.txt содержит 'stockfish' "
+                f"и приложение перезапущено."
+            ) from e
     
     def _find_stockfish(self) -> str:
-        """Ищет Stockfish в Streamlit Cloud и локально"""
-        possible_paths = [
-            "/usr/games/stockfish",       # Streamlit Cloud (apt install)
+        """Находит Stockfish на Streamlit Cloud или локально"""
+        # На Streamlit Cloud Stockfish всегда здесь
+        if os.path.exists(self.CLOUD_PATH):
+            return self.CLOUD_PATH
+        
+        # Локальные варианты
+        local_paths = [
             "/usr/bin/stockfish",
             "/usr/local/bin/stockfish",
-            "stockfish",                  # В PATH
-            "./stockfish",                # В папке проекта
-            os.path.expanduser("~/stockfish/stockfish"),
+            "stockfish",  # В PATH
+            "./stockfish",
         ]
         
-        for path in possible_paths:
-            try:
-                sf = Stockfish(path=path)
-                sf.get_parameters()
+        for path in local_paths:
+            if os.path.exists(path) or self._is_in_path(path):
                 return path
-            except:
-                continue
         
-        raise FileNotFoundError("Stockfish не найден")
+        raise FileNotFoundError(
+            f"Stockfish не найден. На Streamlit Cloud он должен быть в {self.CLOUD_PATH}.\n"
+            f"Убедитесь, что packages.txt содержит 'stockfish' и приложение перезапущено."
+        )
     
-    def _enable_tablebases(self):
-        """Включает tablebases для точного эндшпиля (если есть)"""
-        # Опционально: если скачаны tablebases
-        tb_paths = [
-            os.path.expanduser("~/syzygy"),
-            "/usr/share/stockfish/syzygy",
-        ]
-        for path in tb_paths:
-            if os.path.exists(path):
-                try:
-                    self.sf.set_depth(self.depth)
-                    # Stockfish автоматически использует tablebases если они в PATH
-                except:
-                    pass
+    def _is_in_path(self, name: str) -> bool:
+        """Проверяет, есть ли бинарник в PATH"""
+        try:
+            result = subprocess.run(
+                ["which", name],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            return result.returncode == 0
+        except:
+            return False
+    
+    def _verify_binary(self):
+        """Проверяет, что бинарник запускается"""
+        if not os.path.exists(self.path):
+            # Может быть в PATH
+            try:
+                result = subprocess.run(
+                    [self.path, "--help"],
+                    capture_output=True,
+                    timeout=5
+                )
+                # Stockfish не имеет --help, но должен запуститься
+                return
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Stockfish binary not found at {self.path}")
+            except Exception as e:
+                logger.warning(f"Binary check warning: {e}")
+                return
+        
+        # Проверяем права доступа
+        if not os.access(self.path, os.X_OK):
+            try:
+                os.chmod(self.path, 0o755)
+                logger.info(f"Fixed permissions for {self.path}")
+            except Exception as e:
+                logger.warning(f"Cannot fix permissions: {e}")
     
     def analyze_position(self, fen: str) -> Dict:
         """Анализирует одну позицию"""
-        self.sf.set_fen_position(fen)
-        
-        # Основная оценка
-        eval_dict = self.sf.get_evaluation()
-        
-        # Топ-3 хода
-        top_moves = self.sf.get_top_moves(3)
-        
-        # Определяем тип оценки
-        if eval_dict["type"] == "mate":
-            score_cp = 10000 - abs(eval_dict["value"])  # Мат = очень высокая оценка
-            if eval_dict["value"] < 0:
-                score_cp = -score_cp
-        else:
-            score_cp = eval_dict["value"]
-        
-        # Нормализуем относительно стороны
-        board = chess.Board(fen)
-        if board.turn == chess.BLACK:
-            score_cp = -score_cp
-        
-        return {
-            "fen": fen,
-            "score_cp": score_cp,
-            "score_display": self._format_score(score_cp),
-            "top_moves": [
-                {
-                    "move": m["Move"],
-                    "score_cp": self._normalize_move_score(m, board.turn),
-                }
-                for m in top_moves
-            ],
-            "is_tablebase": self._is_tablebase_position(fen),
-            "piece_count": len(board.piece_map()),
-        }
-    
-    def _normalize_move_score(self, move_data: Dict, turn) -> int:
-        """Нормализует оценку хода относительно белых"""
-        # Stockfish возвращает оценки в формате "cp X" или "mate X"
-        # Нужно распарсить
-        score_str = str(move_data.get("Centipawn", 0))
         try:
-            cp = int(score_str)
-        except:
-            cp = 0
-        
-        if turn == chess.BLACK:
-            cp = -cp
-        return cp
+            self.sf.set_fen_position(fen)
+            
+            # Основная оценка
+            eval_dict = self.sf.get_evaluation()
+            
+            # Определяем тип оценки
+            if eval_dict["type"] == "mate":
+                score_cp = (10000 - abs(eval_dict["value"]) * 10)
+                if eval_dict["value"] < 0:
+                    score_cp = -score_cp
+            else:
+                score_cp = eval_dict["value"]
+            
+            # Нормализуем относительно стороны
+            board = chess.Board(fen)
+            if board.turn == chess.BLACK:
+                score_cp = -score_cp
+            
+            return {
+                "fen": fen,
+                "score_cp": score_cp,
+                "score_display": self._format_score(score_cp),
+                "top_moves": [],  # MultiPV=1, нет топ-3
+                "is_tablebase": len(board.piece_map()) <= 7,
+                "piece_count": len(board.piece_map()),
+            }
+        except Exception as e:
+            logger.error(f"Error analyzing position {fen}: {e}")
+            # Возвращаем нейтральную оценку при ошибке
+            return {
+                "fen": fen,
+                "score_cp": 0,
+                "score_display": "0.00",
+                "top_moves": [],
+                "is_tablebase": False,
+                "piece_count": 32,
+            }
     
     def _format_score(self, cp: int) -> str:
         """Форматирует оценку для отображения"""
         if abs(cp) > 9000:
-            # Мат
-            moves_to_mate = (10000 - abs(cp)) // 2
+            moves_to_mate = (10000 - abs(cp)) // 10
             sign = "+" if cp > 0 else "-"
             return f"{sign}M{moves_to_mate}"
         else:
             return f"{cp / 100:+.2f}"
     
-    def _is_tablebase_position(self, fen: str) -> bool:
-        """Проверяет, есть ли позиция в tablebase (≤7 фигур)"""
-        board = chess.Board(fen)
-        return len(board.piece_map()) <= 7
-    
     def analyze_game(self, game: Dict, progress_callback=None) -> Dict:
-        """
-        Анализирует всю партию
-        Возвращает игру с добавленным полем 'analysis'
-        """
+        """Анализирует всю партию"""
         analysis = []
         moves = game["moves"]
         
@@ -156,7 +182,7 @@ class PositionAnalyzer:
             if progress_callback and i % 5 == 0:
                 progress_callback(i / len(moves))
         
-        # Анализируем финальную позицию
+        # Финальная позиция
         final_analysis = self.analyze_position(game["final_fen"])
         analysis.append({
             **final_analysis,
@@ -168,7 +194,7 @@ class PositionAnalyzer:
         return game
     
     def analyze_batch(self, games: List[Dict], progress_callback=None) -> List[Dict]:
-        """Анализирует несколько партий с прогресс-баром"""
+        """Анализирует несколько партий"""
         analyzed = []
         total = len(games)
         
@@ -178,6 +204,10 @@ class PositionAnalyzer:
                     overall = (i + p) / total
                     progress_callback(overall)
             
-            analyzed.append(self.analyze_game(game, game_progress))
+            try:
+                analyzed.append(self.analyze_game(game, game_progress))
+            except Exception as e:
+                logger.error(f"Error analyzing game {game.get('game_id')}: {e}")
+                # Продолжаем анализировать остальные партии
         
         return analyzed
