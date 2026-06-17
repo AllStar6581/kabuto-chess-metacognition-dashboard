@@ -21,7 +21,7 @@ LICHESS_USERNAME = "AlastarKr"  # Например: "your_lichess_nick"
 CHESSCOM_USERNAME = "AlastarKr"  # Например: "your_chesscom_nick"
 
 STOCKFISH_PATH = None  # None = автопоиск, или укажите путь явно
-MAX_GAMES_TO_LOAD = 1  # Для первой загрузки
+MAX_GAMES_TO_LOAD = 10  # Для первой загрузки
 WINDOW_SIZE = 30  # Размер скользящего окна для динамики
 
 
